@@ -1,21 +1,16 @@
-// ETC Code v6 - Modified 9-1-23
-// Changelog:
-// 
 // [TODO]
-// Test and refine calibration, add calibration check!
 // Add check for enable signal from master controller before outputting to I2C
 // Add code to set a digital pin high whenever brake pedal is pressed (brake light activation for master controller)
-// EV.5.7 - Brake Pedal Plausibility Check (BPPC) - mechanical brakes engaged + 25% pedal travel
 // Out-of-range values from APPS to Arduino & between Arduino and motor controller - T.4.2.10 & T.4.3.4
-// Once brake pedal assy finalized, write min/maxs to EEPROM so calibration not necessary every time
+// Test calibration in assembly
+// Add check to calibration numbers before writing to EEPROM
+// Add check to only allow calibration while accel < 10 (creates issues if throttle stuck > 10, maybe only while moving? or allow when accel > 10 and break engaged?)
+// Improve Readibility: Add more comments, but variable names
 
-//Implausibility Occurs When:
-//paired pedals disagree by 10%, when this occurs for more than 100 millisec, power to motor must be cut
-//When brakes engaged and accel_pedal_travel > 25%
-//in second case, power to motor must be completely cut until accel reads less than 5% w or w/o brakes engaged
-//any failure of the APPS or wiring must be detectable by controller and treated like an implausibility
 
-#include <EEPROM.h>
+#include <EEPROM.h> //EEPROM LIBRARY
+#include <Adafruit_MCP4725.h> //I2C DAC LIBRARY
+
 
 // Pins that potentiometers are connected to
 #define analogPin5g A2  // 5V Gas Input
@@ -47,11 +42,10 @@ int percent_3g = 0;
 int percent_5s = 0;
 int percent_3s = 0;
 
-bool pedal_implausibility = false;
-bool temp_pedal_implausibility = false;
-bool brake_implausibility = false;
+bool pedal_implausibility = false; //pedal_implausibility is the state that occurs when the position of two matching pedals do not agree
+bool temp_pedal_implausibility = false; //temporary variable needed to keep track of time implausibility has occurred for
+bool brake_implausibility = false; //brake_implausibility is the state that occurs when brake is engaged and accel > 25%
 unsigned long implausibility_timer = 0;
-
 
 //variable init for pedal calibration mins/maxs
 int accel_5v_max = 0;
@@ -63,11 +57,14 @@ int brake_5v_min = 100;
 int brake_3v_max = 0;
 int brake_3v_min = 100;
 
-unsigned long debounce_millis = 0;
+unsigned long debounce_millis = 0; // move this to static variable in calibration_state_toggle func
+
+Adafruit_MCP4725 dac; //create I2C DAC object
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  dac.begin(0x62); //initialize I2C DAC at Addr: 0x62
 
   pinMode(analogPin5g, INPUT);
   pinMode(analogPin3g, INPUT);
@@ -85,9 +82,10 @@ void setup() {
   pinMode(implausibility_pin, OUTPUT);
 
   pinMode(analogWritePin, OUTPUT);
-  analogWriteResolution(12);
 
-  read_eeprom();
+  analogWriteResolution(12); //unecessary for I2C DAC
+
+  read_eeprom(); //read eeprom values and overwrite min/maxes
 }
 
 void loop() {
@@ -119,11 +117,13 @@ void loop() {
   get_brake_pedal_travel();
   check_brake_implausibility();
 
-  if (!pedal_implausibility || !brake_implausibility)
+  if (!pedal_implausibility && !brake_implausibility) 
   {
     writeAccelValue();
+    //write_accel_value_i2c
   } else {
     analogWrite(analogWritePin, 0);
+    output = 0;
   }
   //print_state();
   Serial.println(accel_pedal_travel);
@@ -145,7 +145,7 @@ void check_brake_implausibility()
   }
 }
 
-void read_eeprom() // read min/max values from eeprom
+void read_eeprom() // read min/max values from eeprom; 
 {
   accel_5v_max = 16 * EEPROM.read(0);
   accel_5v_min = 16 * EEPROM.read(1);
@@ -154,13 +154,19 @@ void read_eeprom() // read min/max values from eeprom
   Serial.println("EEPROM READ");
 }
 
-void write_to_eeprom() // write min/max values to eeprom
+void write_to_eeprom() // write min/max values to eeprom; todo: find a way to store full 12bit number
 {
   EEPROM.write(0, (accel_5v_max/16));
   EEPROM.write(1, (accel_5v_min/16));
   EEPROM.write(2, (accel_3v_max/16));
   EEPROM.write(3, (accel_3v_min/16));
   Serial.println("EEPROM UPDATED");
+}
+
+void write_accel_value_i2c() //double check constrain values; replace map with a slope function and test difference in speed; add check to see if setVoltage function returns false
+{
+  int output = constrain(map(accel_pedal_travel, 0, 100, 0, 4080),0, 4080);
+  dac.setVoltage(output);
 }
 
 void writeAccelValue()  //transform pedal travel % to usable DAC 12-bit value
@@ -170,21 +176,7 @@ void writeAccelValue()  //transform pedal travel % to usable DAC 12-bit value
   analogWrite(analogWritePin, output);
 }
 
-/*void check_and_set_implausibility() //check and set implaus; unfinished
-{
-  static unsigned long startimptime = 0;
-
-  if (pedal_implausibility == false) {               // check if the variable outside the loop is false (named implausibility)
-      pedal_implausibility = true;                     // If it is currently false, then set it to true, upon which it will stay true until the error stops
-      startimptime = millis();                   // And then call millis() which records the time when implausibility started
-    } else if (millis() - startimptime > 100) {  // Then, check if more than 100ms has passed and if so, do everything when implausibility happens
-      Serial.println("Implausibility Occured");
-      accel_pedal_travel = 0;
-      brake_pedal_travel = 0;
-    }
-}*/
-
-void calibration_state_toggle()
+void calibration_state_toggle() //add check to make sure calibration mode cant be entered at throttle > 10, need way to reset throttle calibration if stuck at > 10
 {
   //debounce button input and toggle calibration state //
   if ((millis() - debounce_millis) > 500) {
