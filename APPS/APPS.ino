@@ -13,10 +13,8 @@
 
 
 // Pins that potentiometers are connected to
-#define analogPin5g A2  // 5V Gas Input
-#define analogPin3g A1  // 3.3V Gas Input
-#define analogPin5s A4  // 5V Stop Input
-#define analogPin3s A5 // 3.3V Stop Input
+#define analogPin5g A1  // 5V Gas Input
+#define analogPin3g A2  // 3.3V Gas Input
 #define analogWritePin A0
 
 #define button_interrupt_pin 2
@@ -35,12 +33,8 @@ int brake_pedal_travel; //was brakeperc, same as above
 // Defining variables & initializing them as zero for potentiometer readings and calculated percentages
 int analog_in_5acc = 0; //was analog_5g
 int analog_in_3acc = 0;
-int analog_in_5brake = 0; //was analog_5s
-int analog_in_3brake = 0;
 int percent_5g = 0;
 int percent_3g = 0;
-int percent_5s = 0;
-int percent_3s = 0;
 
 bool pedal_implausibility = false; //pedal_implausibility is the state that occurs when the position of two matching pedals do not agree
 bool temp_pedal_implausibility = false; //temporary variable needed to keep track of time implausibility has occurred for
@@ -52,10 +46,6 @@ int accel_5v_max = 0;
 int accel_5v_min = 100;
 int accel_3v_max = 0;
 int accel_3v_min = 100;
-int brake_5v_max = 0;
-int brake_5v_min = 100;
-int brake_3v_max = 0;
-int brake_3v_min = 100;
 
 unsigned long debounce_millis = 0; // move this to static variable in calibration_state_toggle func
 
@@ -68,8 +58,6 @@ void setup() {
 
   pinMode(analogPin5g, INPUT);
   pinMode(analogPin3g, INPUT);
-  pinMode(analogPin5s, INPUT);
-  pinMode(analogPin3s, INPUT);
   pinMode(gaspin, OUTPUT);
   pinMode(brake_state_pin, OUTPUT);
 
@@ -94,7 +82,7 @@ void loop() {
   
   if (calibration_state)
   {
-    while(calibration_state) calibrate_pedals();
+    calibrate_pedals();
     write_to_eeprom();
   }
 
@@ -123,10 +111,9 @@ void loop() {
     //write_accel_value_i2c
   } else {
     analogWrite(analogWritePin, 0);
-    output = 0;
+    //output = 0;
   }
-  //print_state();
-  Serial.println(accel_pedal_travel);
+  print_state();
   if(brakes_engaged)
   {
     Serial.println("Brakes engaged");
@@ -166,7 +153,7 @@ void write_to_eeprom() // write min/max values to eeprom; todo: find a way to st
 void write_accel_value_i2c() //double check constrain values; replace map with a slope function and test difference in speed; add check to see if setVoltage function returns false
 {
   int output = constrain(map(accel_pedal_travel, 0, 100, 0, 4080),0, 4080);
-  dac.setVoltage(output);
+  //dac.setVoltage(output);
 }
 
 void writeAccelValue()  //transform pedal travel % to usable DAC 12-bit value
@@ -188,15 +175,19 @@ void calibration_state_toggle() //add check to make sure calibration mode cant b
 
 void calibrate_pedals() //set min/max pedal vals based on measured travel, need to add checks to ensure min/max vals have a reasonable difference
 {
-  Serial.println("you are now calibrating");
-  if (analogRead(analogPin5g) > accel_5v_max) accel_5v_max = analogRead(analogPin5g);
-  if (analogRead(analogPin5g) < accel_5v_min) accel_5v_min = analogRead(analogPin5g);
-  if (analogRead(analogPin3g) > accel_3v_max) accel_3v_max = analogRead(analogPin3g);
-  if (analogRead(analogPin3g) < accel_3v_min) accel_3v_min = analogRead(analogPin3g);
-  if (analogRead(analogPin5s) > brake_5v_max) brake_5v_max = analogRead(analogPin5s);
-  if (analogRead(analogPin5s) < brake_5v_min) brake_5v_min = analogRead(analogPin5s);
-  if (analogRead(analogPin3s) > brake_3v_max) brake_3v_max = analogRead(analogPin3s);
-  if (analogRead(analogPin3s) < brake_3v_min) brake_3v_min = analogRead(analogPin3s);
+  accel_5v_max = 200;
+  accel_5v_min = 200;
+  accel_3v_max = 200;
+  accel_3v_min = 200;
+
+  while(calibration_state)
+  {
+    Serial.println("you are now calibrating");
+    if (analogRead(analogPin5g) > accel_5v_max) accel_5v_max = analogRead(analogPin5g);
+    if (analogRead(analogPin5g) < accel_5v_min) accel_5v_min = analogRead(analogPin5g);
+    if (analogRead(analogPin3g) > accel_3v_max) accel_3v_max = analogRead(analogPin3g);
+    if (analogRead(analogPin3g) < accel_3v_min) accel_3v_min = analogRead(analogPin3g);
+  }
 }
 
 void print_state() //print state
@@ -211,20 +202,17 @@ void print_state() //print state
   Serial.print("%  Analog:");
   Serial.print(analog_in_3acc);
 
-  // Brake Pedal
-  Serial.print("  Brake 5V Travel: ");
-  Serial.print(percent_5s);
-  Serial.print("%  Analog:");
-  Serial.print(analog_in_5brake);
-  Serial.print("  Brake 3.3V Travel: ");
-  Serial.print(percent_3s);
-  Serial.print("%  Analog:");
-  Serial.println(analog_in_3brake);
-
   Serial.print("Combined Accel Pedal Travel: ");
-  Serial.print(accel_pedal_travel); 
-  Serial.print("    Combined Brake Pedal Travel: ");
-  Serial.println(brake_pedal_travel);
+  Serial.println(accel_pedal_travel); 
+
+  Serial.print("5V Max/Min: ");
+  Serial.print(accel_5v_max);
+  Serial.print(" ");
+  Serial.print(accel_5v_min);
+  Serial.print("  3.3v Max/Min: ");
+  Serial.print(accel_3v_max);
+  Serial.print(" ");
+  Serial.println(accel_3v_min);
 }
 
 bool get_accel_pedal_travel () //read both pedal values, convert to percentages and compare, return false if implaus occurs
