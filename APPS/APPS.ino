@@ -6,6 +6,7 @@
 // Add check to calibration numbers before writing to EEPROM
 // Add check to only allow calibration while accel < 10 (creates issues if throttle stuck > 10, maybe only while moving? or allow when accel > 10 and break engaged?)
 // Improve Readibility: Add more comments, but variable names
+// Need to make sure that upon calibration exit, output is 0, so that the car doesn't unexpectedly take off 
 
 
 #include <EEPROM.h> //EEPROM LIBRARY
@@ -107,12 +108,12 @@ void loop() {
 
   if (!pedal_implausibility && !brake_implausibility) 
   {
-    writeAccelValue();
-    //write_accel_value_i2c
+    //writeAccelValue();
+    write_accel_value_i2c();
   } else {
-    analogWrite(analogWritePin, 0);
-    //output = 0;
+    dac.setVoltage(0, false); //idk man
   }
+
   print_state();
   if(brakes_engaged)
   {
@@ -153,7 +154,7 @@ void write_to_eeprom() // write min/max values to eeprom; todo: find a way to st
 void write_accel_value_i2c() //double check constrain values; replace map with a slope function and test difference in speed; add check to see if setVoltage function returns false
 {
   int output = constrain(map(accel_pedal_travel, 0, 100, 0, 4080),0, 4080);
-  //dac.setVoltage(output);
+  dac.setVoltage((uint16_t)output, false);
 }
 
 void writeAccelValue()  //transform pedal travel % to usable DAC 12-bit value
@@ -166,7 +167,7 @@ void writeAccelValue()  //transform pedal travel % to usable DAC 12-bit value
 void calibration_state_toggle() //add check to make sure calibration mode cant be entered at throttle > 10, need way to reset throttle calibration if stuck at > 10
 {
   //debounce button input and toggle calibration state //
-  if ((millis() - debounce_millis) > 500) {
+  if ((millis() - debounce_millis) > 500 && !digitalRead(brake_state_pin)) {
     calibration_state = !calibration_state;
   }
 
