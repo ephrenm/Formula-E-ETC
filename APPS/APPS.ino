@@ -12,15 +12,16 @@
 // #include <EEPROM.h> // EEPROM LIBRARY
 #include <Adafruit_MCP4725.h> // I2C DAC LIBRARY
 
-#define analogPin5g A1  // 5V Gas Input
-#define analogPin3g A2  // 3.3V Gas Input
+#define analogPin5g A6  // 5V Gas Input
+#define analogPin3g A7  // 3.3V Gas Input
 #define analogWritePin A0
 
 #define calibration_interrupt_pin 2 // Input Button, toggles the calibration state
-// #define gas_pin 6
-#define calibration_indicator_pin 7 // Output LED, indicates if we are in a calibration state
-#define brake_state_pin 8
-#define implausibility_pin 9
+#define calibration_indicator_pin 8 // Output LED, indicates if we are in a calibration state
+#define brake_state_pin 6
+#define implausibility_pin 3
+
+#define RTD_pin 5
 
 bool calibration_state = false;
 bool brakes_engaged = true;
@@ -73,7 +74,7 @@ void setup() {
 
   analogWriteResolution(12); // unecessary for I2C DAC
 
-  read_eeprom(); // read eeprom values and overwrite min/maxes
+  //read_eeprom(); // read eeprom values and overwrite min/maxes
 }
 
 
@@ -85,7 +86,7 @@ void loop() {
   
   if (calibration_state) {
     calibrate_pedals();
-    write_to_eeprom();
+    //write_to_eeprom();
   }
 
   if (get_accel_pedal_travel()) {
@@ -171,7 +172,7 @@ void write_accel_value() {
 // need way to reset throttle calibration if stuck at > 10
 void calibration_toggle_state() {
   // debounce button input and toggle calibration state
-  if ((millis() - debounce_millis) > 500 && !digitalRead(brake_state_pin)) {
+  if ((millis() - debounce_millis) > 500 ) { //&& !digitalRead(brake_state_pin) taking out for testing lol
     calibration_state = !calibration_state;
   }
 
@@ -189,10 +190,12 @@ void calibrate_pedals() {
   accel_3v_min = accel_3v_max;
 
   while (calibration_state) {
-    accel_5v = analogRead(analogPin5g);
-    accel_3v = analogRead(analogPin3g);
+    int accel_5v = analogRead(analogPin5g);
+    int accel_3v = analogRead(analogPin3g);
 
-    Serial.println("Calibration | 5V %i, 3V %i", accel_5v, accel_3v);
+    char s [50];
+    sprintf(s, "Calibration | 5V %i, 3V %i", accel_5v, accel_3v);
+    Serial.println(s);
 
     if (accel_5v > accel_5v_max) accel_5v_max = accel_5v;
     if (accel_5v < accel_5v_min) accel_5v_min = accel_5v;
