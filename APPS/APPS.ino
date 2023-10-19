@@ -42,10 +42,10 @@ bool brake_implausibility = false; // brake_implausibility is the state that occ
 unsigned long implausibility_timer = 0;
 
 // variable init for pedal calibration mins/maxs
-int accel_5v_max = 0;
-int accel_5v_min = 100;
-int accel_3v_max = 0;
-int accel_3v_min = 100;
+int accel_5v_max = 3000;
+int accel_5v_min = 2650;
+int accel_3v_max = 950;
+int accel_3v_min = 1350;
 
 unsigned long debounce_millis = 0; // move this to static variable in calibration_toggle_state func
 
@@ -73,7 +73,7 @@ void setup() {
   pinMode(analogWritePin, OUTPUT);
 
   analogWriteResolution(12); // unecessary for I2C DAC
-
+  analogReadResolution(12);
   //read_eeprom(); // read eeprom values and overwrite min/maxes
 }
 
@@ -97,7 +97,7 @@ void loop() {
       temp_pedal_implausibility = true;
       implausibility_timer = millis();
     } else {
-      if (millis() - implausibility_timer > 100) {
+      if (millis() - implausibility_timer > 200) {
         pedal_implausibility = true;
       }
     }
@@ -155,7 +155,15 @@ void check_brake_implausibility() {
 // add check to see if setVoltage function returns false
 void write_accel_value_i2c() {
   int output = constrain(map(accel_pedal_travel, 0, 100, 0, 4080),0, 4080);
-  dac.setVoltage((uint16_t)output, false);
+
+  if(accel_pedal_travel < 10)
+  {
+    dac.setVoltage(0, false);
+  } else {
+    dac.setVoltage((uint16_t)output, false);
+  }
+
+  //dac.setVoltage((uint16_t)output, false);
 }
 
 
@@ -184,14 +192,17 @@ void calibration_toggle_state() {
 // set min/max pedal vals based on measured travel, 
 // need to add checks to ensure min/max vals have a reasonable difference
 void calibrate_pedals() {
-  accel_5v_max = analogRead(analogPin5g);
-  accel_5v_min = accel_5v_max;
-  accel_3v_max = analogRead(analogPin3g);
-  accel_3v_min = accel_3v_max;
+  accel_5v_max = 50;//analogRead(analogPin5g);
+  accel_5v_min = 50000;//accel_5v_max;
+  accel_3v_max = 50;//analogRead(analogPin3g);
+  accel_3v_min = 50000;//accel_3v_max;
+
+  int accel_5v;
+  int accel_3v;
 
   while (calibration_state) {
-    int accel_5v = analogRead(analogPin5g);
-    int accel_3v = analogRead(analogPin3g);
+    accel_5v = analogRead(analogPin5g);
+    accel_3v = analogRead(analogPin3g);
 
     char s [50];
     sprintf(s, "Calibration | 5V %i, 3V %i", accel_5v, accel_3v);
@@ -228,6 +239,8 @@ void print_state() {
   Serial.print(accel_3v_max);
   Serial.print(" ");
   Serial.println(accel_3v_min);
+
+  delay(100);
 }
 
 
@@ -238,11 +251,15 @@ bool get_accel_pedal_travel() {
 
   analog_in_5acc = analogRead(analogPin5g);  // 5V Gas INPUT
   analog_in_3acc = analogRead(analogPin3g);  // 3.3V Gas INPUT
+  if (analog_in_5acc > accel_5v_max) accel_5v_max = analog_in_5acc;
+  if (analog_in_5acc < accel_5v_min) accel_5v_min = analog_in_5acc;
+  if (analog_in_3acc > accel_3v_max) accel_3v_max = analog_in_3acc;
+  if (analog_in_3acc < accel_3v_min) accel_3v_min = analog_in_3acc;
   percent_5g = constrain(map(analog_in_5acc, accel_5v_min, accel_5v_max, 0, 100), 0, 100);
   percent_3g = constrain(map(analog_in_3acc, accel_3v_min, accel_3v_max, 0, 100), 0, 100);
 
   // Gas pedal implausibility check
-  if (abs(percent_5g - percent_3g) < 10.0) {
+  if (abs(percent_5g - percent_3g) < 26.0) {
     return_state = true;
     accel_pedal_travel = constrain(((percent_5g + percent_3g) / 2), 0, 100);  // Since no implausibility, taking the average of the two percentages
   } else {
