@@ -66,6 +66,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(calibration_interrupt_pin), calibration_toggle_state, FALLING);
 
   pinMode(brake_state_pin, INPUT_PULLUP);
+  pinMode(RTD_pin, INPUT);
 
   pinMode(calibration_indicator_pin, OUTPUT);
   pinMode(implausibility_pin, OUTPUT);
@@ -109,7 +110,7 @@ void loop() {
   if (!pedal_implausibility && !brake_implausibility) {
     // write_accel_value();
     write_accel_value_i2c();
-  } else {
+  } else if (digitalRead(RTD_pin)){
     dac.setVoltage(0, false);
   }
 
@@ -154,9 +155,9 @@ void check_brake_implausibility() {
 // double check constrain values; replace map with a slope function and test difference in speed; 
 // add check to see if setVoltage function returns false
 void write_accel_value_i2c() {
-  int output = constrain(map(accel_pedal_travel, 0, 100, 0, 4080),0, 4080);
+  int output = constrain(map(accel_pedal_travel, 0, 100, 820, 3280),820, 3280);
 
-  if(accel_pedal_travel < 7)
+  if(accel_pedal_travel < 10)
   {
     dac.setVoltage(0, false);
   } else {
@@ -265,7 +266,7 @@ bool get_accel_pedal_travel() {
   percent_3g = constrain(map(analog_in_3acc, accel_3v_min, accel_3v_max, 0, 100), 0, 100);
 
   // Gas pedal implausibility check
-  if (abs(percent_5g - percent_3g) <  20) {
+  if (abs(percent_5g - percent_3g) <  10) {
     return_state = true;
     accel_pedal_travel = constrain(((percent_5g + percent_3g) / 2), 0, 100);  // Since no implausibility, taking the average of the two percentages
   } else {
