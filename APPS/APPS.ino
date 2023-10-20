@@ -42,10 +42,10 @@ bool brake_implausibility = false; // brake_implausibility is the state that occ
 unsigned long implausibility_timer = 0;
 
 // variable init for pedal calibration mins/maxs
-int accel_5v_max = 3000;
-int accel_5v_min = 2650;
-int accel_3v_max = 950;
-int accel_3v_min = 1350;
+int accel_5v_max = 1000;
+int accel_5v_min = 500;
+int accel_3v_max = 1000;
+int accel_3v_min = 300;
 
 unsigned long debounce_millis = 0; // move this to static variable in calibration_toggle_state func
 
@@ -156,7 +156,7 @@ void check_brake_implausibility() {
 void write_accel_value_i2c() {
   int output = constrain(map(accel_pedal_travel, 0, 100, 0, 4080),0, 4080);
 
-  if(accel_pedal_travel < 10)
+  if(accel_pedal_travel < 7)
   {
     dac.setVoltage(0, false);
   } else {
@@ -238,7 +238,13 @@ void print_state() {
   Serial.print("  3.3v Max/Min: ");
   Serial.print(accel_3v_max);
   Serial.print(" ");
-  Serial.println(accel_3v_min);
+  Serial.print(accel_3v_min);
+
+  Serial.print("     left:");
+  Serial.print(percent_3g);
+  
+  Serial.print("     right: ");
+  Serial.println(percent_5g);
 
   delay(100);
 }
@@ -259,7 +265,7 @@ bool get_accel_pedal_travel() {
   percent_3g = constrain(map(analog_in_3acc, accel_3v_min, accel_3v_max, 0, 100), 0, 100);
 
   // Gas pedal implausibility check
-  if (abs(percent_5g - percent_3g) < 26.0) {
+  if (abs(percent_5g - percent_3g) <  20) {
     return_state = true;
     accel_pedal_travel = constrain(((percent_5g + percent_3g) / 2), 0, 100);  // Since no implausibility, taking the average of the two percentages
   } else {
