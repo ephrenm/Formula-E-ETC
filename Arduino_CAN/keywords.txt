@@ -1,0 +1,49 @@
+#######################################
+# Syntax Coloring Map for CAN
+#######################################
+
+#######################################
+# Class (KEYWORD1)
+#######################################
+
+CAN	KEYWORD1
+CAN1	KEYWORD1
+CanMsg	KEYWORD1
+CanBitRate	KEYWORD1
+CanStandardId	KEYWORD2
+CanExtendedId	KEYWORD2
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+end	KEYWORD2
+enableInternalLoopback	KEYWORD2
+disableInternalLoopback	KEYWORD2
+write	KEYWORD2
+available	KEYWORD2
+read	KEYWORD2
+isError	KEYWORD2
+clearError	KEYWORD2
+setFilterMask_Standard
+setFilterMask_Extended
+setFilterId_Standard
+setFilterId_Extended
+
+getStandardId	KEYWORD2
+getExtendedId	KEYWORD2
+isStandardId	KEYWORD2
+isExtendedId	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+BR_100k	LITERAL1
+BR_125k	LITERAL1
+BR_250k	LITERAL1
+BR_500k	LITERAL1
+BR_1000k	LITERAL1
+CAN_MAX_NO_STANDARD_MAILBOXES	LITERAL1
+CAN_MAX_NO_EXTENDED_MAILBOXES	LITERAL1
