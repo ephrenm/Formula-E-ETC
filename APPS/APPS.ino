@@ -20,7 +20,7 @@
 
 // #define analogWritePin A0
 
-// #define calibration_interrupt_pin 2 // Input Button, toggles the calibration state
+#define calibration_interrupt_pin 2 // Input Button, toggles the calibration state
 
 
 #define brake_state_pin D12
@@ -48,9 +48,9 @@ static unsigned long pedal_implausibility_timer = 0;
 static unsigned long brake_implausibility_timer = 0;
 
 // variable init for pedal calibration mins/maxs
-int accel_5v_max = 1000;
+int accel_5v_max = 550;
 int accel_5v_min = 500;
-int accel_3v_max = 1000;
+int accel_3v_max = 550;
 int accel_3v_min = 300;
 
 uint8_t pedal_implausibility_thres = 10; // a percentage of the max allowable 3v to 5v accel sensor shift
@@ -195,41 +195,41 @@ void read_brake_pedal_travel() {
 // }
 
 
-// calibration_reset()
-// resets the calibration values after a button press, totally not needed in the future
-// void calibration_reset() {
-//   // Debounce button input, reset calibration values
-//   if ((millis() - debounce_millis) > 500) {
-//     accel_5v_max = 1000;
-//     accel_5v_min = 500;
-//     accel_3v_max = 1000;
-//     accel_3v_min = 300;
-//   }
-//   // Set debounce millis
-//   debounce_millis = millis();
-// }
+calibration_reset()
+resets the calibration values after a button press, totally not needed in the future
+void calibration_reset() {
+  // Debounce button input, reset calibration values
+  if ((millis() - debounce_millis) > 500) {
+    accel_5v_max = 1000;
+    accel_5v_min = 500;
+    accel_3v_max = 1000;
+    accel_3v_min = 300;
+  }
+  // Set debounce millis
+  debounce_millis = millis();
+}
 
 // read_accel_pedal_travel()
 // read both pedal values, convert to percentages and compare, set implausibility flag
 void read_accel_pedal_travel() {
   int i=0;
-  // analog_in_5acc=0;
-  // analog_in_3acc=0;
+  analog_in_5acc=0;
+  analog_in_3acc=0;
 
-  // for(int i=0;i<32;i++){
-  //     analog_in_5acc += analogRead(analogPin5g); // 5V Gas INPUT
-  //     analog_in_3acc += analogRead(analogPin3g); // 3.3V Gas INPUT
-  //     delayMicroseconds(100);     //100us delay
-  //     //total delay 3.2 ms
-  // }
-  // Serial.println(analog_in_5acc);
-  // Serial.println(analog_in_3acc);
-  // analog_in_5acc= analog_in_5acc >> 5;    //AVG
-  // analog_in_3acc= analog_in_3acc >> 5;    //AVG
+  for(int i=0;i<32;i++){
+      analog_in_5acc += analogRead(analogPin5g); // 5V Gas INPUT
+      analog_in_3acc += analogRead(analogPin3g); // 3.3V Gas INPUT
+      delayMicroseconds(100);     //100us delay
+      //total delay 3.2 ms
+  }
+  Serial.println(analog_in_5acc);
+  Serial.println(analog_in_3acc);
+  analog_in_5acc= analog_in_5acc >> 5;    //AVG
+  analog_in_3acc= analog_in_3acc >> 5;    //AVG
 
 
-  analog_in_5acc = analogRead(analogPin5g); // 5V Gas INPUT
-  analog_in_3acc = analogRead(analogPin3g); // 3.3V Gas INPUT
+  // analog_in_5acc = analogRead(analogPin5g); // 5V Gas INPUT
+  // analog_in_3acc = analogRead(analogPin3g); // 3.3V Gas INPUT
 
   if (analog_in_5acc > accel_5v_max) accel_5v_max = analog_in_5acc;
   if (analog_in_5acc < accel_5v_min) accel_5v_min = analog_in_5acc;
@@ -238,11 +238,11 @@ void read_accel_pedal_travel() {
 
   percent_5g = constrain(map(analog_in_5acc, accel_5v_min, accel_5v_max, 0, 100), 0, 100);
   percent_3g = constrain(map(analog_in_3acc, accel_3v_min, accel_3v_max, 0, 100), 0, 100);
-
+  accel_pedal_travel = (percent_5g + percent_3g)>>1;
   // Pedal implausibility check
   if (abs(percent_5g - percent_3g) < pedal_implausibility_thres) {
     // Set accel_pedal_travel
-    accel_pedal_travel = constrain(((percent_5g + percent_3g) / 2), 0, 100);
+    // accel_pedal_travel = (percent_5g + percent_3g);
 
     // Make sure we passed 200ms timer threshold to reset pedal_implausibility
     if (millis() - pedal_implausibility_timer > 200) {
@@ -269,13 +269,13 @@ void print_state() {
   Serial.print("%  Analog:");
   Serial.print(analog_in_3acc);
 
-  Serial.print("Pedal mismatch: ");
+  Serial.print(" Pedal mismatch: ");
   Serial.print(abs(percent_5g - percent_3g));
 
   Serial.print(" Combined Accel Pedal Travel: ");
   Serial.println(accel_pedal_travel); 
 
-  Serial.print("5V Max/Min: ");
+  Serial.print(" 5V Max/Min: ");
   Serial.print(accel_5v_max);
   Serial.print(" ");
   Serial.print(accel_5v_min);
