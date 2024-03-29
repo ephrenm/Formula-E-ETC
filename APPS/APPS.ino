@@ -1,36 +1,30 @@
-// [TODO]
-// Add check for enable signal from master controller before outputting to I2C
-// Add code to set a digital pin high whenever brake pedal is pressed (brake light activation for master controller)
-// Out-of-range values from APPS to Arduino & between Arduino and motor controller - T.4.2.10 & T.4.3.4
-// Test calibration in assembly
-// Add check to calibration numbers before writing to EEPROM
-// Add check to only allow calibration while accel < 10 (creates issues if throttle stuck > 10, maybe only while moving? or allow when accel > 10 and break engaged?)
-// Improve Readibility: Add more comments, but variable names
-// Need to make sure that upon calibration exit, output is 0, so that the car doesn't unexpectedly take off 
-// Something has to RESET implausibility variables
-
-
-// #include <EEPROM.h> // EEPROM LIBRARY
-// #include <Adafruit_MCP4725.h> // I2C DAC LIBRARY
 
 #include <Arduino_CAN.h>
 
+int counter_5v = 0;
+int counter_3v = 0;
+
 #define analogPin5g A0  // 5V Gas Input     ONLY INPUT
 #define analogPin3g A1  // 3.3V Gas Input
-
 // #define analogWritePin A0
 
 #define calibration_interrupt_pin 2 // Input Button, toggles the calibration state
 
-
 #define brake_state_pin D12
 #define implausibility_led D6 // Output LED, indicates if implausibility is detected
 #define throttle_led D7 // Output LED, indicates if we outputting an accel value above
-
 // #define RTD_pin 5
 
-bool brakes_engaged = true;
+//GLOBAL PARAMETERS
+#define pedal_implausibility_thres 10   //mutual shift in terms of percentage of full scale
+#define pedal_deadzone_thres_5v 10       // a percentage of throttle to ignore (0 to [this value])
+#define pedal_deadzone_thres_3v 10       // a percentage of throttle to ignore (0 to [this value])
 
+//S=3.3V
+//delta= 3.3/1023= 
+
+
+bool brakes_engaged = true;
 // Variables for storing percentages mapped from analog readings
 uint8_t brake_pedal_travel; // was brakeperc, same as above
 
@@ -44,22 +38,17 @@ uint8_t accel_pedal_travel; // was gasperc, combined accel percentages/2 for fin
 
 bool pedal_implausibility = false; // pedal_implausibility is the state that occurs when the position of two matching pedals do not agree
 bool brake_implausibility = false; // brake_implausibility is the state that occurs when brake is engaged and accel > 25%
+
 static unsigned long pedal_implausibility_timer = 0;
 static unsigned long brake_implausibility_timer = 0;
 
 // variable init for pedal calibration mins/maxs
-int accel_5v_max = 550;
-int accel_5v_min = 500;
-int accel_3v_max = 550;
-int accel_3v_min = 300;
-
-uint8_t pedal_implausibility_thres = 10; // a percentage of the max allowable 3v to 5v accel sensor shift
-uint8_t pedal_deadzone_thres = 5; // a percentage of throttle to ignore (0 to [this value])
+int accel_5v_max = 0;
+int accel_5v_min = 1000;
+int accel_3v_max = 0;
+int accel_3v_min = 1000;
 
 unsigned long debounce_millis = 0;
-
-// Adafruit_MCP4725 dac; // create I2C DAC object
-
 //CAN ADDRESS
 static uint32_t const CAN_ID = 0x20;
 
@@ -68,13 +57,10 @@ static uint32_t const CAN_ID = 0x20;
 // Before we enter the loop() below, this setup() function is run once
 void setup() {
   Serial.begin(115200);
-
-  // dac.begin(0x62); // initialize I2C DAC at Addr: 0x62
-
   pinMode(analogPin5g, INPUT);
   pinMode(analogPin3g, INPUT);
-  // pinMode(gas_pin, OUTPUT);
 
+  // pinMode(gas_pin, OUTPUT);
   // pinMode(calibration_interrupt_pin, INPUT_PULLUP);
   // attachInterrupt(digitalPinToInterrupt(calibration_interrupt_pin), calibration_reset, FALLING);
 
@@ -95,7 +81,6 @@ void setup() {
     }
 
 
-
   analogWriteResolution(10); // unecessary for I2C DAC
   analogReadResolution(10);
 }
@@ -110,7 +95,7 @@ void loop() {
   // Read/update accel pedal travel, sets implausibility flag
   read_accel_pedal_travel();
   // Write LED statuses
-  digitalWrite(throttle_led, accel_pedal_travel >= pedal_deadzone_thres);
+  digitalWrite(throttle_led, accel_pedal_travel >= pedal_deadzone_thres_5v);
   //TODO something has to RESET implausibility FLAGS
   brake_implausibility=0;
   // Read/update brake pedal state, sets implausibility flag
@@ -195,14 +180,13 @@ void read_brake_pedal_travel() {
 // }
 
 
-calibration_reset()
-resets the calibration values after a button press, totally not needed in the future
+// calibration_reset() resets the calibration values after a button press, totally not needed in the future
 void calibration_reset() {
   // Debounce button input, reset calibration values
   if ((millis() - debounce_millis) > 500) {
-    accel_5v_max = 1000;
+    accel_5v_max = 500;
     accel_5v_min = 500;
-    accel_3v_max = 1000;
+    accel_3v_max = 300;
     accel_3v_min = 300;
   }
   // Set debounce millis
@@ -215,15 +199,27 @@ void read_accel_pedal_travel() {
   int i=0;
   analog_in_5acc=0;
   analog_in_3acc=0;
+  
+  uint8_t analog_tmp;
 
   for(int i=0;i<32;i++){
-      analog_in_5acc += analogRead(analogPin5g); // 5V Gas INPUT
-      analog_in_3acc += analogRead(analogPin3g); // 3.3V Gas INPUT
-      delayMicroseconds(100);     //100us delay
-      //total delay 3.2 ms
+  analog_tmp=analogRead(analogPin5g);
+  Serial.print("5v");
+  Serial.println(analog_tmp);
+  if (analog_in_5acc > accel_5v_max + pedal_deadzone_thres_5v) counter_5v++;
+  if (analog_in_5acc < accel_5v_min - pedal_deadzone_thres_5v) counter_5v++;
+  analog_in_5acc += analog_tmp; // 5V Gas INPUT
+
+  analog_tmp=analogRead(analogPin3g);
+  Serial.print("3v");
+  Serial.println(analog_tmp);
+  if (analog_in_3acc > accel_3v_max + pedal_deadzone_thres_3v)counter_3v++;
+  if (analog_in_3acc < accel_3v_min - pedal_deadzone_thres_3v)counter_3v++;
+  analog_in_3acc += analog_tmp;
+   // 3.3V Gas INPUT
+  delayMicroseconds(100);     //100us delay
+  //total delay 3.2 ms
   }
-  Serial.println(analog_in_5acc);
-  Serial.println(analog_in_3acc);
   analog_in_5acc= analog_in_5acc >> 5;    //AVG
   analog_in_3acc= analog_in_3acc >> 5;    //AVG
 
@@ -231,30 +227,34 @@ void read_accel_pedal_travel() {
   // analog_in_5acc = analogRead(analogPin5g); // 5V Gas INPUT
   // analog_in_3acc = analogRead(analogPin3g); // 3.3V Gas INPUT
 
-  if (analog_in_5acc > accel_5v_max) accel_5v_max = analog_in_5acc;
-  if (analog_in_5acc < accel_5v_min) accel_5v_min = analog_in_5acc;
-  if (analog_in_3acc > accel_3v_max) accel_3v_max = analog_in_3acc;
-  if (analog_in_3acc < accel_3v_min) accel_3v_min = analog_in_3acc;
+  if (analog_in_5acc > accel_5v_max + pedal_deadzone_thres_5v && counter_5v > 28) accel_5v_max = analog_in_5acc;
+  if (analog_in_5acc < accel_5v_min - pedal_deadzone_thres_5v && counter_5v > 28) accel_5v_min = analog_in_5acc;
+  if (analog_in_3acc > accel_3v_max + pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_max = analog_in_3acc;
+  if (analog_in_3acc < accel_3v_min - pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_min = analog_in_3acc;
+  // if (analog_in_3acc > accel_3v_max + pedal_deadzone_thres_3v && counter_3v > 10) accel_3v_max = analog_in_3acc;
 
+
+  counter_3v =0;
+  counter_5v =0;
+
+
+
+
+  //percentage mapping of throttles
   percent_5g = constrain(map(analog_in_5acc, accel_5v_min, accel_5v_max, 0, 100), 0, 100);
   percent_3g = constrain(map(analog_in_3acc, accel_3v_min, accel_3v_max, 0, 100), 0, 100);
-  accel_pedal_travel = (percent_5g + percent_3g)>>1;
-  // Pedal implausibility check
-  if (abs(percent_5g - percent_3g) < pedal_implausibility_thres) {
-    // Set accel_pedal_travel
-    // accel_pedal_travel = (percent_5g + percent_3g);
 
-    // Make sure we passed 200ms timer threshold to reset pedal_implausibility
-    if (millis() - pedal_implausibility_timer > 200) {
+  // Set accel_pedal_travel
+  accel_pedal_travel = (percent_5g + percent_3g)>>1;
+
+  // Pedal implausibility check
+  if (abs(percent_5g - percent_3g) > pedal_implausibility_thres) {      //not permitted value  
+    pedal_implausibility = true;
+    pedal_implausibility_timer = millis();        //sample the implausibility time
+  }
+  else if (millis() - pedal_implausibility_timer > 200) {    // Make sure we passed 200ms timer threshold to reset pedal_implausibility
       pedal_implausibility = false;
     }
-    return;
-  }
-
-  // Implausibility in 5v vs 3v values, set flag and timer
-  pedal_implausibility = true;
-  pedal_implausibility_timer = millis();
-
 }
 
 // print_state()
@@ -292,31 +292,9 @@ void print_state() {
   Serial.print("     right: ");
   Serial.print(percent_5g);
 
-  Serial.print("Implausability check: ");
+  Serial.print(" Implausability check: ");
   Serial.println(brake_implausibility);
 
   delay(50);
 }
 
-
-
-
-
-// void read_eeprom() // read min/max values from eeprom; 
-// {
-//   accel_5v_max = 16 * EEPROM.read(0);
-//   accel_5v_min = 16 * EEPROM.read(1);
-//   accel_3v_max = 16 * EEPROM.read(2);
-//   accel_3v_min = 16 * EEPROM.read(3);
-//   Serial.println("EEPROM READ");
-// }
-
-
-// void write_to_eeprom() // write min/max values to eeprom; todo: find a way to store full 12bit number
-// {
-//   EEPROM.write(0, (accel_5v_max/16));
-//   EEPROM.write(1, (accel_5v_min/16));
-//   EEPROM.write(2, (accel_3v_max/16));
-//   EEPROM.write(3, (accel_3v_min/16));
-//   Serial.println("EEPROM UPDATED");
-// }
