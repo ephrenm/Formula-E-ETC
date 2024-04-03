@@ -1,14 +1,14 @@
 # Formula E ETC
  [TODO]
- 
- Add check for enable signal from master controller before outputting to I2C
- 
- Test calibration in assembly
- 
- Add check to calibration numbers before writing to EEPROM: difference between min/max should be reasonable values
+
+ Eventually when we got it set up mechanically implement brake pedal reading
  
  Add check to only allow calibration while break engaged
+
+ Fix 3v causing the acceleration petal getting stuck at 1-5% when not touched
+
+ Clean up more noise for accurate readings
  
  Improve Readibility: Add more comments, better variable names
 
- Finished output to DAC function
+
