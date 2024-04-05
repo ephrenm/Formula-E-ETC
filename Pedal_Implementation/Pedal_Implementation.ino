@@ -4,11 +4,17 @@ uint8_t counter_5v = 0;
 uint8_t counter_3v = 0;
 uint8_t counter_Stuck = 0;
 
+//PIECEWISE APPROXIMATION PARAMETERS
+#define x1 256
+#define y1 64
+#define y2 320
+#define y3 832
+
 #define analogPin5g A0  // 5V Gas Input
 #define analogPin3g A1  // 3.3V Gas Input
 // #define analogWritePin A0
 
-#define calibration_interrupt_pin 2 // Input Button, toggles the calibration state
+#define calibration_interrupt_pin D2 // Input Button, toggles the calibration state
 #define brake_state_pin D12
 #define implausibility_led D6 // Output LED, indicates if implausibility is detected
 #define throttle_led D7 // Output LED, indicates if we outputting an accel value above
@@ -16,8 +22,8 @@ uint8_t counter_Stuck = 0;
 
 //GLOBAL PARAMETERS
 #define pedal_implausibility_thres 10   //mutual shift in terms of percentage of full scale
-#define pedal_deadzone_thres_5v 10       // a percentage of throttle to ignore (0 to [this value])
-#define pedal_deadzone_thres_3v 10       // a percentage of throttle to ignore (0 to [this value])
+#define pedal_deadzone_thres_5v 5       // a percentage of throttle to ignore (0 to [this value])
+#define pedal_deadzone_thres_3v 3       // a percentage of throttle to ignore (0 to [this value])
 
 //S=3.3V
 //delta= 3.3/1023= 
@@ -27,11 +33,12 @@ bool brakes_engaged = true;
 uint8_t brake_pedal_travel; // was brakeperc, same as above
 
 // Defining variables & initializing them as zero for potentiometer readings and calculated percentages
-uint8_t analog_in_5Vacc = 0;
-uint8_t analog_in_3Vacc = 0;
+uint32_t analog_in_5Vacc = 0;
+uint32_t analog_in_3Vacc = 0;
 
 uint8_t percent_5g = 0;
 uint8_t percent_3g = 0;
+
 uint8_t accel_pedal_travel; // was gasperc, combined accel percentages/2 for final pedal travel percentage
 
 bool pedal_implausibility = false; // pedal_implausibility is the state that occurs when the position of two matching pedals do not agree
@@ -49,7 +56,7 @@ uint8_t accel_3v_min = 1000;
 unsigned long debounce_millis = 0;
 
 static uint32_t const CAN_ID = 0x01; //CAN ID
-static uint32_t msg_cnt = 0; //Can msg counter
+uint32_t msg_cnt = 0; //Can msg counter
 
 
 // setup()
@@ -88,12 +95,12 @@ void setup() {
 
 void loop() {
   //TODO something has to RESET implausibility FLAGS
-  brake_implausibility=0;
+  
 
-  calibration_pin_state = digitalRead(calibration_interrupt_pin);
-  if (calibration_pin_state == 1) {
-    calibration_reset();
-  }
+  // uint8_t calibration_pin_state = digitalRead(calibration_interrupt_pin);
+  // if (calibration_pin_state == 1) {
+  //   calibration_reset();
+  // }
 
   // Read/update accel pedal travel, sets implausibility flag
   read_accel_pedal_travel();
@@ -175,22 +182,26 @@ void calibration_reset() {
 // read both pedal values, convert to percentages and compare, set implausibility flag
 void read_accel_pedal_travel() {
   uint8_t analog_tmp;
+  analog_in_5Vacc=0;
+  analog_in_3Vacc=0;
+  counter_3v=0;
+  counter_5v=0;
 
   for(int i=0;i<32;i++){
     analog_tmp=analogRead(analogPin5g);
-    Serial.print("5v"); //For testing
-    Serial.println(analog_tmp);//For testing
+    // Serial.print("5v "); //For testing
+    // Serial.println(analog_tmp);//For testing
     //Count for analog accuracy when finding a new min/max
-    if (analog_in_5Vacc > accel_5v_max + pedal_deadzone_thres_5v) counter_5v++;
-    if (analog_in_5Vacc < accel_5v_min - pedal_deadzone_thres_5v) counter_5v++;
+    if (analog_tmp > accel_5v_max + pedal_deadzone_thres_5v) counter_5v++;
+    if (analog_tmp < accel_5v_min - pedal_deadzone_thres_5v) counter_5v++;
     analog_in_5Vacc += analog_tmp; // 5V Gas INPUT
 
     analog_tmp=analogRead(analogPin3g);
-    Serial.print("3v"); //For testing
-    Serial.println(analog_tmp); //For testing
+    // Serial.print("3v "); //For testing
+    // Serial.println(analog_tmp); //For testing
     //Count for analog accuracy when finding a new min/max
-    if (analog_in_3Vacc > accel_3v_max + pedal_deadzone_thres_3v)counter_3v++;
-    if (analog_in_3Vacc < accel_3v_min - pedal_deadzone_thres_3v)counter_3v++;
+    if (analog_tmp > accel_3v_max + pedal_deadzone_thres_3v)counter_3v++;
+    if (analog_tmp < accel_3v_min - pedal_deadzone_thres_3v)counter_3v++;
     analog_in_3Vacc += analog_tmp;
     // 3.3V Gas INPUT
     delayMicroseconds(100);     //100us delay
@@ -204,8 +215,7 @@ void read_accel_pedal_travel() {
   if (analog_in_3Vacc > accel_3v_max + pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_max = analog_in_3Vacc;
   if (analog_in_3Vacc < accel_3v_min - pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_min = analog_in_3Vacc;
 
-  counter_3v=0;
-  counter_5v=0;
+  piecewise_throttle(&analog_in_5Vacc);
 
   //percentage mapping of throttles
   percent_5g = constrain(map(analog_in_5Vacc, accel_5v_min, accel_5v_max, 0, 100), 0, 100);
@@ -215,11 +225,11 @@ void read_accel_pedal_travel() {
   accel_pedal_travel = (percent_5g + percent_3g)>>1; 
 
   //Potential fix to getting stuck at 1-5% when not touched
-  if (accel_pedal_travel > 0 && accel_pedal_travel <= 4) {
+  if (accel_pedal_travel > 0 && accel_pedal_travel <= 5) {
     counter_Stuck++;
-    if (counter_Stuck == 5) {
-      accel_3v_max -= 10;
-      accel_5v_max -= 10;
+    if (counter_Stuck == 2) {
+      accel_3v_min += 3;
+      //accel_5v_min -= 10;
     }
   } 
   else {
@@ -277,3 +287,24 @@ void print_state() {
   delay(50);
 }
 
+void piecewise_throttle(uint16_t* pedal_acc ) { // 10 bit dac
+  uint16_t x = (*pedal_acc&(x1-1)); //last 8 bit
+
+  Serial.print("\n Throttle 5v Before:");
+  Serial.print(*pedal_acc);
+
+    if(*pedal_acc>((x1<<1)+1 )){ //SLOPE 1 (769 to 1023)
+      *pedal_acc = y3 + x;
+    }
+    else if(*pedal_acc>(x1<<1)){ //SLOPE 2 (512 to 768)
+      *pedal_acc = y2 + (x<<1);              
+    }
+    else if(*pedal_acc>x1){ //SLOPE 0.5 (256 to 512)
+      *pedal_acc = y1 + (x);
+    }
+    else{
+      *pedal_acc=x>>2; //SLOPE 0.25 (0 to 255)
+    }
+  Serial.print("  Throttle 5v After:");
+  Serial.println(*pedal_acc);
+}
