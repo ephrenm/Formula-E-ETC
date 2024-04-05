@@ -229,7 +229,14 @@ void read_accel_pedal_travel() {
     counter_Stuck++;
     if (counter_Stuck == 2) {
       accel_3v_min += 3;
-      //accel_5v_min -= 10;
+      //accel_5v_min -= 3;
+    }
+  } 
+  else if (accel_pedal_travel > 95 && accel_pedal_travel <= 98) {
+    counter_Stuck++;
+    if (counter_Stuck == 3) {
+      accel_3v_max -= 3;
+      //accel_5v_max -= 3;
     }
   } 
   else {
