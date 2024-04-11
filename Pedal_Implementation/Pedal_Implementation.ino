@@ -2,7 +2,13 @@
 
 uint8_t counter_5v = 0;
 uint8_t counter_3v = 0;
-uint8_t counter_Stuck = 0;
+uint8_t counter_Stuck_High = 0;
+uint8_t counter_Stuck_Low = 0;
+// int testing_start = 0;
+// int testing_end = 0;
+int last_updated_low = millis();
+int last_updated_high = millis();
+
 
 //PIECEWISE APPROXIMATION PARAMETERS
 #define x1 256
@@ -23,7 +29,7 @@ uint8_t counter_Stuck = 0;
 //GLOBAL PARAMETERS
 #define pedal_implausibility_thres 10   //mutual shift in terms of percentage of full scale
 #define pedal_deadzone_thres_5v 5       // a percentage of throttle to ignore (0 to [this value])
-#define pedal_deadzone_thres_3v 3       // a percentage of throttle to ignore (0 to [this value])
+#define pedal_deadzone_thres_3v 5       // a percentage of throttle to ignore (0 to [this value])
 
 //S=3.3V
 //delta= 3.3/1023= 
@@ -101,7 +107,6 @@ void loop() {
   // if (calibration_pin_state == 1) {
   //   calibration_reset();
   // }
-
   // Read/update accel pedal travel, sets implausibility flag
   read_accel_pedal_travel();
   // Read/update brake pedal state, sets implausibility flag
@@ -178,6 +183,47 @@ void calibration_reset() {
   debounce_millis = millis();
 }
 
+void check_pedal_stuck() {
+  //Potential fix to getting stuck at 1-5% when not touched
+  // if (counter_Stuck_Low == 0 && counter_Stuck_High == 0) {
+  //   testing_start = millis();
+  // }
+  if (accel_pedal_travel > 0  && accel_pedal_travel <= 4) {
+    counter_Stuck_Low++;
+    /*counter -> milisec: 2 -> 57, 3 -> 114, 4 -> 171, 5 -> 228, 6 -> 285, 7 -> 342, 8 -> 399, 9 -> 456 10 -> 502, 
+    11 -> 560, 12 -> 616, 13 -> 683, 14 -> 741, 15 -> 798, 16 -> 855, 17 -> 912, 18 -> 969, 19 -> 1026, 20 -> 1083*/
+    //Counter reaches 3 & 1.25 sec since last update
+    if (counter_Stuck_Low == 18 && (millis() - last_updated_low) > 1500) { 
+      if (accel_3v_min < 92 || accel_5v_min < 48) {
+        accel_3v_min += 4;
+        accel_5v_min += 4;
+        last_updated_low = millis();
+      }
+      // testing_end = millis();
+      // Serial.print("Runtime per data set in milliseconds: ");
+      // Serial.println(testing_end-testing_start);
+      // delay(5000);
+    }
+  } 
+  else if (accel_pedal_travel >= 96 && accel_pedal_travel <= 99) {
+    counter_Stuck_High++;
+    //Counter reaches 3 & 1.25 sec since last update
+    if (counter_Stuck_High == 10 && (millis() - last_updated_high) > 1500) {
+      accel_3v_max -= 3;
+      accel_5v_max -= 3;
+      last_updated_high = millis();
+      // testing_end = millis();
+      // Serial.print("Runtime per data set in milliseconds: ");
+      // Serial.println(testing_end-testing_start);
+      // delay(5000);
+    }
+  } 
+  else {
+    counter_Stuck_Low = 0;
+    counter_Stuck_High = 0;
+  }
+}
+
 // read_accel_pedal_travel()
 // read both pedal values, convert to percentages and compare, set implausibility flag
 void read_accel_pedal_travel() {
@@ -186,7 +232,7 @@ void read_accel_pedal_travel() {
   analog_in_3Vacc=0;
   counter_3v=0;
   counter_5v=0;
-
+  
   for(int i=0;i<32;i++){
     analog_tmp=analogRead(analogPin5g);
     // Serial.print("5v "); //For testing
@@ -215,7 +261,7 @@ void read_accel_pedal_travel() {
   if (analog_in_3Vacc > accel_3v_max + pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_max = analog_in_3Vacc;
   if (analog_in_3Vacc < accel_3v_min - pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_min = analog_in_3Vacc;
 
-  piecewise_throttle(&analog_in_5Vacc);
+  //piecewise_throttle(&analog_in_5Vacc);
 
   //percentage mapping of throttles
   percent_5g = constrain(map(analog_in_5Vacc, accel_5v_min, accel_5v_max, 0, 100), 0, 100);
@@ -224,24 +270,8 @@ void read_accel_pedal_travel() {
   // Set accel_pedal_travel by avg 5v & 3v 
   accel_pedal_travel = (percent_5g + percent_3g)>>1; 
 
-  //Potential fix to getting stuck at 1-5% when not touched
-  if (accel_pedal_travel > 0 && accel_pedal_travel <= 5) {
-    counter_Stuck++;
-    if (counter_Stuck == 2) {
-      accel_3v_min += 3;
-      //accel_5v_min -= 3;
-    }
-  } 
-  else if (accel_pedal_travel > 95 && accel_pedal_travel <= 98) {
-    counter_Stuck++;
-    if (counter_Stuck == 3) {
-      accel_3v_max -= 3;
-      //accel_5v_max -= 3;
-    }
-  } 
-  else {
-    counter_Stuck = 0;
-  }
+  //Checks if pedal is stuck at 1-4 or 96-99 ajusting to 0 or 100 respectively
+  check_pedal_stuck();
 
   // Pedal implausibility check
   if (abs(percent_5g - percent_3g) > pedal_implausibility_thres) { 
