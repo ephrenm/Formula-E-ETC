@@ -3,11 +3,14 @@
 uint8_t counter_5v = 0;
 uint8_t counter_3v = 0;
 uint8_t counter_Stuck_High = 0;
-uint8_t counter_Stuck_Low = 0;
-// int testing_start = 0;
-// int testing_end = 0;
-int last_updated_low = millis();
-int last_updated_high = millis();
+uint8_t counter_Stuck_Low1 = 0;
+uint8_t counter_Stuck_Low2 = 0;
+uint8_t counter_Stuck_Low3 = 0;
+uint8_t counter_Stuck_Low4 = 0;
+uint16_t last_updated_low = millis();
+uint16_t last_updated_high = millis();
+
+bool piecewise_implementation = false;
 
 
 //PIECEWISE APPROXIMATION PARAMETERS
@@ -45,7 +48,7 @@ uint32_t analog_in_3Vacc = 0;
 uint8_t percent_5g = 0;
 uint8_t percent_3g = 0;
 
-uint8_t accel_pedal_travel; // was gasperc, combined accel percentages/2 for final pedal travel percentage
+uint8_t accel_pedal_travel; // Combined mean accel percentages of 5V & 3V
 
 bool pedal_implausibility = false; // pedal_implausibility is the state that occurs when the position of two matching pedals do not agree
 bool brake_implausibility = false; // brake_implausibility is the state that occurs when brake is engaged and accel > 25%
@@ -85,39 +88,30 @@ void setup() {
 
   // pinMode(analogWritePin, OUTPUT);
 
-  //while (!Serial) { } //Wait until serial is opened
-
   //CAN communication
-  if (!CAN.begin(CanBitRate::BR_250k))
-    {
+  if (!CAN.begin(CanBitRate::BR_250k)) {
       Serial.println("CAN.begin(...) failed.");
       for (;;) {}
     }
-  
-  //Delete this under?
-  analogWriteResolution(10); // unecessary for I2C DAC
-  analogReadResolution(10);
 }
 
 void loop() {
   //TODO something has to RESET implausibility FLAGS
-  
 
   // uint8_t calibration_pin_state = digitalRead(calibration_interrupt_pin);
   // if (calibration_pin_state == 1) {
   //   calibration_reset();
   // }
-  // Read/update accel pedal travel, sets implausibility flag
+  // Read/update accel pedal travel && sets implausibility flag
   read_accel_pedal_travel();
-  // Read/update brake pedal state, sets implausibility flag
+  // Read/update brake pedal state && sets implausibility flag
   read_brake_pedal_travel();
 
   //Write LED statuses 
   digitalWrite(throttle_led, accel_pedal_travel >= pedal_deadzone_thres_5v);
   digitalWrite(implausibility_led, pedal_implausibility || brake_implausibility);
 
-  //CAN wite func
-  send_can_msg();
+  send_can_msg();  //CAN wite func
 
   // Write accel value if conditions are met, otherwise set output to 0
   // if (
@@ -146,8 +140,8 @@ void send_can_msg() {
   if (rc < 0)
   {
     Serial.print  ("CAN.write(...) failed with error code ");
-    Serial.println(rc);
-    //for (;;) { } //Turns on infinite loop
+    Serial.print(rc);
+    Serial.println(" ,-60003 is failed to send message");
   }
   msg_cnt++;
 }
@@ -170,56 +164,46 @@ void read_brake_pedal_travel() {
   }
 }
 
-// calibration_reset() resets the calibration values after a button press, totally not needed in the future
-void calibration_reset() {
-  // Debounce button input, reset calibration values
-  if ((millis() - debounce_millis) > 500) {
-    accel_5v_max = 500;
-    accel_5v_min = 500;
-    accel_3v_max = 300;
-    accel_3v_min = 300;
-  }
-  // Set debounce millis
-  debounce_millis = millis();
-}
-
 void check_pedal_stuck() {
-  //Potential fix to getting stuck at 1-5% when not touched
-  // if (counter_Stuck_Low == 0 && counter_Stuck_High == 0) {
-  //   testing_start = millis();
-  // }
-  if (accel_pedal_travel > 0  && accel_pedal_travel <= 4) {
-    counter_Stuck_Low++;
-    /*counter -> milisec: 2 -> 57, 3 -> 114, 4 -> 171, 5 -> 228, 6 -> 285, 7 -> 342, 8 -> 399, 9 -> 456 10 -> 502, 
-    11 -> 560, 12 -> 616, 13 -> 683, 14 -> 741, 15 -> 798, 16 -> 855, 17 -> 912, 18 -> 969, 19 -> 1026, 20 -> 1083*/
-    //Counter reaches 3 & 1.25 sec since last update
-    if (counter_Stuck_Low == 18 && (millis() - last_updated_low) > 1500) { 
-      if (accel_3v_min < 92 || accel_5v_min < 48) {
-        accel_3v_min += 4;
-        accel_5v_min += 4;
-        last_updated_low = millis();
-      }
-      // testing_end = millis();
-      // Serial.print("Runtime per data set in milliseconds: ");
-      // Serial.println(testing_end-testing_start);
-      // delay(5000);
+  if (accel_pedal_travel > 0  && accel_pedal_travel <= 1) {
+        counter_Stuck_Low1++;
+  }
+  else if (accel_pedal_travel > 1  && accel_pedal_travel <= 2) {
+        counter_Stuck_Low2++;
+  }
+  else if (accel_pedal_travel > 2  && accel_pedal_travel <= 3) {
+        counter_Stuck_Low3++;
+  }
+  else if (accel_pedal_travel > 3  && accel_pedal_travel <= 4) {
+        counter_Stuck_Low4++;
+  }
+
+  /*counter -> milisec: 2 -> 57, 3 -> 114, 4 -> 171, 5 -> 228, 6 -> 285, 7 -> 342, 8 -> 399, 9 -> 456 10 -> 502, 
+  11 -> 560, 12 -> 616, 13 -> 683, 14 -> 741, 15 -> 798, 16 -> 855, 17 -> 912, 18 -> 969, 19 -> 1026, 20 -> 1083*/
+
+  //Stuck low
+  if ((counter_Stuck_Low1 == 5 ||  counter_Stuck_Low2 == 5 || counter_Stuck_Low3 == 5 ||
+    counter_Stuck_Low4 == 5) && (millis() - last_updated_low) > 1000) { 
+    if (accel_3v_min < 92 || accel_5v_min < 48) {
+      accel_3v_min += 4;
+      accel_5v_min += 4;
+      last_updated_low = millis();
     }
-  } 
-  else if (accel_pedal_travel >= 96 && accel_pedal_travel <= 99) {
+  }
+  //Stuck high
+  else if (accel_pedal_travel >= 90 && accel_pedal_travel <= 99) {
     counter_Stuck_High++;
-    //Counter reaches 3 & 1.25 sec since last update
-    if (counter_Stuck_High == 10 && (millis() - last_updated_high) > 1500) {
+    if (counter_Stuck_High == 8 && (millis() - last_updated_high) > 1000) {
       accel_3v_max -= 3;
       accel_5v_max -= 3;
       last_updated_high = millis();
-      // testing_end = millis();
-      // Serial.print("Runtime per data set in milliseconds: ");
-      // Serial.println(testing_end-testing_start);
-      // delay(5000);
     }
   } 
   else {
-    counter_Stuck_Low = 0;
+    counter_Stuck_Low1 = 0;
+    counter_Stuck_Low2 = 0;
+    counter_Stuck_Low3 = 0;
+    counter_Stuck_Low4 = 0;
     counter_Stuck_High = 0;
   }
 }
@@ -235,21 +219,16 @@ void read_accel_pedal_travel() {
   
   for(int i=0;i<32;i++){
     analog_tmp=analogRead(analogPin5g);
-    // Serial.print("5v "); //For testing
-    // Serial.println(analog_tmp);//For testing
     //Count for analog accuracy when finding a new min/max
     if (analog_tmp > accel_5v_max + pedal_deadzone_thres_5v) counter_5v++;
     if (analog_tmp < accel_5v_min - pedal_deadzone_thres_5v) counter_5v++;
     analog_in_5Vacc += analog_tmp; // 5V Gas INPUT
 
     analog_tmp=analogRead(analogPin3g);
-    // Serial.print("3v "); //For testing
-    // Serial.println(analog_tmp); //For testing
     //Count for analog accuracy when finding a new min/max
     if (analog_tmp > accel_3v_max + pedal_deadzone_thres_3v)counter_3v++;
     if (analog_tmp < accel_3v_min - pedal_deadzone_thres_3v)counter_3v++;
     analog_in_3Vacc += analog_tmp;
-    // 3.3V Gas INPUT
     delayMicroseconds(100);     //100us delay
     //Total runtime delay 3.2 ms
   }
@@ -261,8 +240,6 @@ void read_accel_pedal_travel() {
   if (analog_in_3Vacc > accel_3v_max + pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_max = analog_in_3Vacc;
   if (analog_in_3Vacc < accel_3v_min - pedal_deadzone_thres_3v && counter_3v > 28) accel_3v_min = analog_in_3Vacc;
 
-  //piecewise_throttle(&analog_in_5Vacc);
-
   //percentage mapping of throttles
   percent_5g = constrain(map(analog_in_5Vacc, accel_5v_min, accel_5v_max, 0, 100), 0, 100);
   percent_3g = constrain(map(analog_in_3Vacc, accel_3v_min, accel_3v_max, 0, 100), 0, 100);
@@ -273,6 +250,10 @@ void read_accel_pedal_travel() {
   //Checks if pedal is stuck at 1-4 or 96-99 ajusting to 0 or 100 respectively
   check_pedal_stuck();
 
+  // if (piecewise_implementation) {
+  //   piecewise_throttle1(&analog_in_5Vacc); //Piece wise attempt #1
+  // }
+
   // Pedal implausibility check
   if (abs(percent_5g - percent_3g) > pedal_implausibility_thres) { 
     pedal_implausibility = true;
@@ -281,6 +262,31 @@ void read_accel_pedal_travel() {
   else if (millis() - pedal_implausibility_timer > 200) { //200ms timer threshold to reset pedal_implausibility
     pedal_implausibility = false;
   }
+}
+
+//Needs to be changed. We cannot manipulate the data to be higher than it actually is
+//only for it to be decreased. New approach is needed.
+void piecewise_throttle1(uint32_t* pedal_acc ) { // 10 bit dac
+  uint16_t x = ((accel_5v_max-accel_5v_min)>>2); //last 8 bit
+  Serial.print("\n Throttle 5v Before:");
+  Serial.println(*pedal_acc);
+  
+  if(*pedal_acc < x+accel_5v_min){ //SLOPE 1 - 1/4 pedal_acc
+    (*pedal_acc) = ((*pedal_acc)>>2);
+  }
+  else if(*pedal_acc < 2*x+accel_5v_min){ //SLOPE 2 - 1/4*x + (ped-x)/2
+    (*pedal_acc) = ((x>>2) + (((*pedal_acc)-x)>>1));              
+  }
+  else if(*pedal_acc < 4*x+accel_5v_min){ //SLOPE 3 - 1/4*x + 1/2*x + ped-2*x
+    (*pedal_acc) = (x>>2) + (x>>1) + ((*pedal_acc)-2*x);
+  }
+  else{
+    (*pedal_acc) = (x>>2) + (x>>1)  + x + ((*pedal_acc)-3*x)*2; //SLOPE 4 - 1/4*x + 1/2*x + x + (ped-3*x)*2
+  }
+  (*pedal_acc) += accel_5v_min;
+
+  Serial.print("  Throttle 5v After:");
+  Serial.println(*pedal_acc);
 }
 
 // print_state()
@@ -322,26 +328,4 @@ void print_state() {
   Serial.println(brake_implausibility);
 
   delay(50);
-}
-
-void piecewise_throttle(uint16_t* pedal_acc ) { // 10 bit dac
-  uint16_t x = (*pedal_acc&(x1-1)); //last 8 bit
-
-  Serial.print("\n Throttle 5v Before:");
-  Serial.print(*pedal_acc);
-
-    if(*pedal_acc>((x1<<1)+1 )){ //SLOPE 1 (769 to 1023)
-      *pedal_acc = y3 + x;
-    }
-    else if(*pedal_acc>(x1<<1)){ //SLOPE 2 (512 to 768)
-      *pedal_acc = y2 + (x<<1);              
-    }
-    else if(*pedal_acc>x1){ //SLOPE 0.5 (256 to 512)
-      *pedal_acc = y1 + (x);
-    }
-    else{
-      *pedal_acc=x>>2; //SLOPE 0.25 (0 to 255)
-    }
-  Serial.print("  Throttle 5v After:");
-  Serial.println(*pedal_acc);
 }
